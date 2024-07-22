@@ -16,21 +16,29 @@ def select_best_function(x, y, functions, progress_callback=None, status_callbac
 
     for i, func in enumerate(functions):
         if status_callback:
-            status_callback(f"Testing {func.__class__.__name__} function...")
+            status_callback(f"Testing {str(func)} function...")
         
-        initial_guess = func.initial_guess(x, y)
-        params = optimize_parameters(func, x, y, initial_guess)
-        score = evaluate_function(func, x, y, params)
+        try:
+            initial_guess = func.initial_guess(x, y)
+            params = optimize_parameters(func, x, y, initial_guess)
+            score = evaluate_function(func, x, y, params)
         
-        if score > best_score:
-            best_score = score
-            best_func = func
+            if score > best_score:
+                best_score = score
+                best_func = func
+        except Exception as e:
+            print(f"Error with {str(func)}: {str(e)}")
+            continue  # Skip this function and move to the next one
 
         if progress_callback:
             progress_callback(int((i + 1) / len(functions) * 40))  # Use only 40% for function selection
 
     if status_callback:
-        status_callback(f"Best function selected: {best_func.__class__.__name__}")
+        if best_func:
+            status_callback(f"Best function selected: {str(best_func)}")
+        else:
+            status_callback("No suitable function found")
+    
     return best_func
 
 def optimize_parameters(func, x, y, initial_guess, method='Nelder-Mead'):
@@ -57,12 +65,11 @@ def advanced_optimization(func, x, y, progress_callback=None, status_callback=No
     def basin_hopping_callback(x, f, accept):
         nonlocal bh_iter
         progress = 40 + int((bh_iter / niter_bh) * 30)
-        k = 1 if fast_mode else 10
         if progress_callback:
             progress_callback(progress)
         if time_callback:
             time_callback(progress)
-        if status_callback and bh_iter % k == 0:
+        if status_callback and bh_iter:
             status_callback(f"Basin-hopping iteration {bh_iter}/{niter_bh}")
         bh_iter += 1
         return False
@@ -86,7 +93,7 @@ def advanced_optimization(func, x, y, progress_callback=None, status_callback=No
             progress_callback(progress)
         if time_callback:
             time_callback(progress)
-        if status_callback and de_iter % 100 == 0:
+        if status_callback and de_iter:
             status_callback(f"Differential evolution iteration {de_iter}/{de_maxiter}")
         de_iter += 1
         return False
@@ -95,7 +102,7 @@ def advanced_optimization(func, x, y, progress_callback=None, status_callback=No
     bounds = [(-10, 10)] * len(initial_guess)
     result_de = differential_evolution(lambda params: -evaluate_function(func, x, y, params),
                                        bounds, callback=differential_evolution_callback,
-                                       maxiter=de_maxiter, popsize=5 if fast_mode else 15)
+                                       maxiter=de_maxiter, polish=True, popsize=4 if fast_mode else 16)
     
     if progress_callback:
         progress_callback(100)
@@ -116,8 +123,17 @@ def evaluate_function(func, x, y, params):
     Evaluates the function using multiple metrics.
     """
     y_pred = func(x, *params)
-    r2 = r2_score(y, y_pred)
-    rmse = np.sqrt(mean_squared_error(y, y_pred))
+    
+    # Rimuovi eventuali NaN o infiniti da y_pred
+    valid_mask = np.isfinite(y_pred)
+    y_valid = y[valid_mask]
+    y_pred_valid = y_pred[valid_mask]
+
+    if len(y_valid) == 0:
+        return float('-inf')  # Restituisci un punteggio molto basso se non ci sono predizioni valide
+
+    r2 = r2_score(y_valid, y_pred_valid)
+    rmse = np.sqrt(mean_squared_error(y_valid, y_pred_valid))
     
     # Cross-validation
     kf = KFold(n_splits=5)
@@ -131,9 +147,17 @@ def evaluate_function(func, x, y, params):
         
         # Evaluate on test data
         y_test_pred = func(x_test, *train_params)
-        cv_scores.append(r2_score(y_test, y_test_pred))
+        
+        # Rimuovi eventuali NaN o infiniti
+        valid_mask = np.isfinite(y_test_pred)
+        y_test_valid = y_test[valid_mask]
+        y_test_pred_valid = y_test_pred[valid_mask]
+        
+        if len(y_test_valid) > 0:
+            cv_scores.append(r2_score(y_test_valid, y_test_pred_valid))
     
     # Combine metrics (you can adjust the weights)
-    score = 0.5 * r2 + 0.3 * (1 / rmse) + 0.2 * np.mean(cv_scores)
+    score = 0.5 * r2 + 0.3 * (1 / (rmse + 1e-10)) + 0.2 * np.mean(cv_scores) if cv_scores else 0
     
     return score
+    

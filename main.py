@@ -1,6 +1,8 @@
 import logging
 from data_handling import read_data
-from parametric_functions import LinearFunction, QuadraticFunction, ExponentialFunction, GaussianFunction
+from parametric_functions import (LinearFunction, QuadraticFunction, ExponentialFunction, GaussianFunction,
+                                 LogarithmicFunction, PowerLawFunction, PolynomialFunction, LogisticFunction,
+                                 HyperbolicTangentFunction)
 from optimization import select_best_function, optimize_parameters, advanced_optimization
 from visualization import plot_results, plot_residuals, generate_report
 from utils import setup_logging
@@ -27,7 +29,9 @@ def main():
         return
 
     # List of functions to test
-    functions = [LinearFunction(), QuadraticFunction(), ExponentialFunction(), GaussianFunction()]
+    functions = [LinearFunction(), QuadraticFunction(), ExponentialFunction(), GaussianFunction(),
+                 LogarithmicFunction(), PowerLawFunction(), PolynomialFunction(), LogisticFunction(),
+                 HyperbolicTangentFunction()]
 
     # Select the best function
     best_func = select_best_function(x, y, functions)
